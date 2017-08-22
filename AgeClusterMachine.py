@@ -19,10 +19,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-import tensorflow as tf
 from util.inception_resnet_v1 import *
-from util.file_reader import *
-from util.progress import *
 import os
 from datetime import datetime
 import time
@@ -35,7 +32,7 @@ class AgeClusterMachine():
     set different hinge for different age gap
     """
 
-    def __init__(self, sess=tf.Session()):
+    def __init__(self):
 
         self.data_dir = '/scratch/BingZhang/dataset/CACD2000_Cropped'
         self.data_info = '/scratch/BingZhang/dataset/CACD2000/celenew2.mat'
@@ -69,6 +66,7 @@ class AgeClusterMachine():
         self.path_placeholder = tf.placeholder(tf.string, [None, 3], name='paths')
         self.index_placeholder = tf.placeholder(tf.int64, [None, 3], name='indices')
         self.batch_size_placeholder = tf.placeholder(tf.int32, name='batch_size')
+        self.delta_placeholder = tf.placeholder(tf.float32, [1, None], name='delta')
         # input queue (FIFO queue)
         self.input_queue = data_flow_ops.FIFOQueue(capacity=10000, dtypes=[tf.string, tf.int64], shapes=[(3,), (3,)])
         self.enqueue_op = self.input_queue.enqueue_many([self.path_placeholder, self.index_placeholder])
@@ -79,7 +77,7 @@ class AgeClusterMachine():
         for _ in range(nof_process_threads):
             file_paths, labels = self.input_queue.dequeue()
             images = []
-            for file_path in file_paths:
+            for file_path in tf.unstack(file_paths):
                 file_content = tf.read_file(file_path)
                 image = tf.image.decode_png(file_content)
                 image.set_shape((self.image_width, self.image_height, self.image_channel))
@@ -89,36 +87,42 @@ class AgeClusterMachine():
         self.image_batch, self.index_batch = tf.train.batch_join(images_and_labels,
                                                                  batch_size=self.batch_size_placeholder,
                                                                  enqueue_many=True,
-                                                                 capacity=nof_process_threads * self.batch_size_placeholder,
+                                                                 capacity=nof_process_threads * self.batch_size,
                                                                  shapes=[(self.image_width, self.image_height,
                                                                           self.image_channel), ()],
-                                                                 allow_smaller_final_batch=True)
+                                                                 allow_smaller_final_batch=True,
+                                                                 shared_name=None)
         ''' end of input pipeline '''
 
         # ops and tensors in graph
+        # self.embeddings = self.net_forward(self.image_batch)
+        self.embeddings = tf.get_variable(name='emb',shape=[21*3,128],initializer=tf.truncated_normal_initializer(stddev=0.1))
+        self.loss = self.get_triplet_loss(self.embeddings, self.delta_placeholder)
+        self.summary_op,self.average_op = self.get_summary()
+        with tf.control_dependencies([self.average_op]):
+            self.opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
 
     def net_forward(self, image_batch):
         # convolution layers
-        net, _ = inference(image_batch, keep_probability=1.0, bottleneck_layer_size=128, phase_train=True,
-                           weight_decay=0.0, reuse=None)
+        net, _ = inference(image_batch, keep_probability=1.0, bottleneck_layer_size=128, phase_train=True, reuse=None)
         embeddings = slim.fully_connected(net, self.embedding_bits, activation_fn=None,
                                           weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
                                           weights_regularizer=slim.l2_regularizer(0.0))
         embeddings = tf.nn.l2_normalize(embeddings, dim=1, epsilon=1e-12, name='embeddings')
         return embeddings
 
-    def get_triplet_loss(self,embeddings,deltas):
+    def get_triplet_loss(self, embeddings, deltas):
         anchor = embeddings[0:self.batch_size:3][:]
         positive = embeddings[1:self.batch_size:3][:]
         negative = embeddings[2:self.batch_size:3][:]
 
-        pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor,positive)),1)
-        neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor,negative)),1)
-        basic_loss = tf.add(tf.subtract(pos_dist,neg_dist),deltas)
-        loss = tf.reduce_sum(tf.maximum(basic_loss,0.0),0)
+        pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
+        neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
+        basic_loss = tf.add(tf.subtract(pos_dist, neg_dist), tf.reshape(deltas, (self.batch_size / 3,)))
+        loss = tf.reduce_mean(tf.maximum(basic_loss, 0.0), 0)
         return loss
 
-    def get_triplet_loss_facenet(self,anchor,positive,negative,delta):
+    def get_triplet_loss_facenet(self, anchor, positive, negative, delta):
         pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
         neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
 
@@ -126,52 +130,34 @@ class AgeClusterMachine():
         loss = tf.reduce_mean(tf.maximum(basic_loss, 0.0), 0)
         return loss
 
-    # def train(self):
-    #     init_op = tf.global_variables_initializer()
-    #     self.sess.run(init_op)
-    #     saver = tf.train.Saver()
-    #     data_reader = dr.DataReader(self.data_dir, 55606, self.batch_size, 0.8, reproducible=True)
-    #     tf.summary.image('image', self.image_in, 10)
-    #     summary_op = tf.summary.merge_all()
-    #     writer_train = tf.summary.FileWriter(self.log_dir + '/train', self.sess.graph)
-    #     writer_test = tf.summary.FileWriter(self.log_dir + '/test', self.sess.graph)
-    #     step = 1
-    #     while data_reader.epoch < self.max_epoch:
-    #         if step % 10 == 0:
-    #             images, label = data_reader.next_batch(phase_train=False)
-    #             reshaped_image = np.reshape(images, [self.batch_size, 64, 64, 3])
-    #             feed_dict = {self.image_in: reshaped_image, self.label_in: label}
-    #             start_time = time.time()
-    #             err, acc, sum = self.sess.run([self.loss, self.accuracy, summary_op], feed_dict=feed_dict)
-    #             duration = time.time() - start_time
-    #             print('[%s]\tEpoch:%d/%d\tTime:%.3f\tLoss:%2.4f\tAcc:%2.4f\t@[TEST]' % (datetime.now().isoformat(),
-    #                                                                                     data_reader.current_test_batch_index,
-    #                                                                                     data_reader.epoch, duration,
-    #                                                                                     err, acc))
-    #             writer_test.add_summary(sum, step)
-    #         else:
-    #             images, label = data_reader.next_batch(phase_train=True)
-    #             reshaped_image = np.reshape(images, [self.batch_size, 64, 64, 3])
-    #             feed_dict = {self.image_in: reshaped_image, self.label_in: label}
-    #             start_time = time.time()
-    #             err, acc, sum, _ = self.sess.run([self.loss, self.accuracy, summary_op, self.opt], feed_dict=feed_dict)
-    #             duration = time.time() - start_time
-    #             print('[%s]\tEpoch:%d/%d\tTime:%.3f\tLoss:%2.4f\tAcc:%2.4f\t' % (datetime.now().isoformat(),
-    #                                                                              data_reader.current_train_batch_index,
-    #                                                                              data_reader.epoch, duration, err, acc))
-    #             writer_train.add_summary(sum, step)
-    #         if step % 2224 == 0:
-    #             if not os.path.exists(self.model_dir):
-    #                 os.makedirs(self.model_dir)
-    #             saver.save(self.sess, self.model_dir, step)
-    #
-    #         step += 1
+    def get_summary(self):
+        with tf.name_scope('affinity'):
+            tf.summary.image('original', self.age_affinity)
+            tf.summary.image('binarized', self.age_affinity_binarized)
+        with tf.name_scope('loss'):
+            tf.summary.scalar('original_loss', self.loss)
+            average = tf.train.ExponentialMovingAverage(0.9)
+            average_op = average.apply([self.loss])
+            tf.summary.scalar('averaged_loss', average.apply(self.loss))
+        with tf.name_scope('nof_triplets'):
+            tf.summary.scalar('nof_triplets', self.nof_selected_age_triplets)
 
+        return tf.summary.merge_all(),average_op
 
+    def test(self):
+        with tf.Session() as sess:
+            embeddings = tf.get_variable(name='fake_embeddings', shape=[6.0, 2.0], dtype=tf.float32,
+                                         initializer=tf.truncated_normal_initializer(stddev=1))
+            delta = tf.Variable(name='fake_delta', initial_value=[[1.0],
+                                                                  [2.0]], dtype=tf.float32)
+
+            sess.run(tf.global_variables_initializer())
+            self.batch_size = 6
+            print sess.run(embeddings)
+            print(sess.run(self.get_triplet_loss(embeddings, delta)))
+
+    def train(self):
+        
 if __name__ == '__main__':
-    config = tf.ConfigProto(allow_soft_placement=False, log_device_placement=False)
-    config.gpu_options.allow_growth = True
-    this_session = tf.Session(config=config)
-    sess = tf.Session()
-    model = AgeClusterMachine(sess=this_session)
-    model.train()
+    instance = AgeClusterMachine()
+    instance.test()
