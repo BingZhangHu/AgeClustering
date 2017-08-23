@@ -58,7 +58,7 @@ class AgeClusterMachine():
         #
         self.model = '/scratch/BingZhang/facenet4drfr/model/20170512-110547/model-20170512-110547.ckpt-250000'
         self.log_dir = os.path.join('./log', datetime.now().isoformat())
-        self.model_dir = os.path.join(self.log_dir,'model.ckpt')
+        self.model_dir = os.path.join('./log','model.ckpt')
 
         # net parameters
         self.step = 0
@@ -205,13 +205,13 @@ class AgeClusterMachine():
         saver.restore(sess, self.model)
         saved_time = 0
 
+        val_embeddings_array = np.zeros(shape=(cacd.val_size, self.embedding_bits))
         for triplet_selection in range(self.max_epoch):
 
             if triplet_selection % 5 == 0 or triplet_selection < 5:
                 val_paths = cacd.get_val(cacd.val_size)
                 val_path_array = np.reshape(val_paths, (-1, 3))
                 val_label_array = np.reshape(np.arange(cacd.val_size), (-1, 3))
-                val_embeddings_array = np.zeros(shape=(cacd.val_size, self.embedding_bits))
 
                 # FIFO enqueue
                 sess.run(self.enqueue_op,
@@ -252,8 +252,8 @@ class AgeClusterMachine():
 
             # compute affinity matrix on batch
             aff = []
-            for index in range(nof_examples):
-                aff.append(np.sum(np.square(embedding_array[index][:] - embedding_array), 1))
+            for idx in range(nof_examples):
+                aff.append(np.sum(np.square(embedding_array[idx][:] - embedding_array), 1))
             aff_binarized = binarize_affinity(aff, self.nof_images_per_age)
 
             triplets = select_triplets_by_label(embedding_array, self.nof_sampled_age, self.nof_images_per_age, labels)
@@ -270,7 +270,7 @@ class AgeClusterMachine():
             for i in range(nof_batches):
                 batch_size = min(nof_triplets * 3 - i * self.batch_size, self.batch_size)
                 summary, label_, loss, _ = sess.run(
-                    [self.summary_op, self.label_batch, self.loss, self.opt],
+                    [self.summary_op, assignment,self.label_batch, self.loss, self.opt],
                     feed_dict={self.batch_size_placeholder: batch_size,
                                self.age_affinity: np.reshape(aff, [1, self.age_sampled_examples,
                                                                    self.age_sampled_examples,
@@ -279,7 +279,8 @@ class AgeClusterMachine():
                                                                                        self.age_sampled_examples,
                                                                                        self.age_sampled_examples,
                                                                                        1]),
-                               self.nof_selected_age_triplets: nof_triplets, })
+                               self.nof_selected_age_triplets: nof_triplets,
+                               self.val_embeddings: val_embeddings_array})
                 # write in summary
                 summary_writer.add_summary(summary, self.step)
                 progress(i + 1, nof_batches, str(triplet_selection) + 'th Epoch',
