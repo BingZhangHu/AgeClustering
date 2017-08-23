@@ -69,7 +69,7 @@ class AgeClusterMachine():
 
         self.nof_sampled_age = 20
         self.nof_images_per_age = 45
-        self.age_sampled_examples = self.nof_images_per_age * self.nof_images_per_age
+        self.age_sampled_examples = self.nof_images_per_age * self.nof_sampled_age
 
         # age affinity matrix, add to summary to be monitored
         self.age_affinity = tf.placeholder(tf.float32, [None, self.age_sampled_examples, self.age_sampled_examples, 1],
