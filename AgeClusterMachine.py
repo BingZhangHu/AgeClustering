@@ -46,7 +46,7 @@ class AgeClusterMachine():
 
         # validation data
 
-        self.val_dir = './'
+        self.val_dir = '/scratch/BingZhang/lfw_250/'
         self.val_list = './data/val_list.txt'
         self.val_size = 144
 
