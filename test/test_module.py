@@ -19,6 +19,7 @@ class TestModule(unittest.TestCase):
             print sess.run(positive)
             print sess.run(negative)
             print sess.run(loss2)
+            print sess.run(tf.add(embeddings,[1,2]))
 
 def get_triplet_loss(embeddings,deltas):
     anchor = embeddings[0:6:3][:]

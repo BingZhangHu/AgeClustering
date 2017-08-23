@@ -20,11 +20,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 from util.inception_resnet_v1 import *
+from util.file_reader import *
 import os
 from datetime import datetime
 import time
 import numpy as np
 from tensorflow.python.ops import data_flow_ops
+from util.progress import *
+from tensorflow.contrib.tensorboard.plugins import projector
+import scipy.io as sio
 
 
 class AgeClusterMachine():
@@ -33,14 +37,27 @@ class AgeClusterMachine():
     """
 
     def __init__(self):
+        # data directory
+        # self.data_dir = '/scratch/BingZhang/dataset/CACD2000_Cropped'
+        # self.data_info = '/scratch/BingZhang/dataset/CACD2000/celenew2.mat'
 
-        self.data_dir = '/scratch/BingZhang/dataset/CACD2000_Cropped'
-        self.data_info = '/scratch/BingZhang/dataset/CACD2000/celenew2.mat'
+        self.data_dir = '/home/bingzhang/Documents/Dataset/CACD/CACD2000'
+        self.data_info = '/home/bingzhang/Documents/Dataset/CACD/celenew2.mat'
+
+        # validation data
+
+        self.val_dir = './'
+        self.val_list = './data/val_list.txt'
 
         # image size
         self.image_height = 250
         self.image_width = 250
         self.image_channel = 3
+
+        #
+        self.model = '/scratch/BingZhang/facenet4drfr/model/20170512-110547/model-20170512-110547.ckpt-250000'
+        self.log_dir = './log'
+        self.model_dir = './model'
 
         # net parameters
         self.step = 0
@@ -64,12 +81,11 @@ class AgeClusterMachine():
         ''' input pipeline '''
         # placeholders
         self.path_placeholder = tf.placeholder(tf.string, [None, 3], name='paths')
-        self.index_placeholder = tf.placeholder(tf.int64, [None, 3], name='indices')
+        self.label_placeholder = tf.placeholder(tf.int64, [None, 3], name='indices')
         self.batch_size_placeholder = tf.placeholder(tf.int32, name='batch_size')
-        self.delta_placeholder = tf.placeholder(tf.float32, [1, None], name='delta')
         # input queue (FIFO queue)
-        self.input_queue = data_flow_ops.FIFOQueue(capacity=10000, dtypes=[tf.string, tf.int64], shapes=[(3,), (3,)])
-        self.enqueue_op = self.input_queue.enqueue_many([self.path_placeholder, self.index_placeholder])
+        self.input_queue = data_flow_ops.FIFOQueue(capacity=1000000, dtypes=[tf.string, tf.int64], shapes=[(3,), (3,)])
+        self.enqueue_op = self.input_queue.enqueue_many([self.path_placeholder, self.label_placeholder])
 
         # de-queue an element from input_queue
         nof_process_threads = 4
@@ -79,12 +95,15 @@ class AgeClusterMachine():
             images = []
             for file_path in tf.unstack(file_paths):
                 file_content = tf.read_file(file_path)
-                image = tf.image.decode_png(file_content)
+                try:
+                    image = tf.image.decode_png(file_content)
+                except:
+                    image = tf.image.decode_jpeg(file_content)
                 image.set_shape((self.image_width, self.image_height, self.image_channel))
-                images.append(image)
+                images.append(tf.image.per_image_standardization(image))
             images_and_labels.append([images, labels])
         # generate batch
-        self.image_batch, self.index_batch = tf.train.batch_join(images_and_labels,
+        self.image_batch, self.label_batch = tf.train.batch_join(images_and_labels,
                                                                  batch_size=self.batch_size_placeholder,
                                                                  enqueue_many=True,
                                                                  capacity=nof_process_threads * self.batch_size,
@@ -95,16 +114,17 @@ class AgeClusterMachine():
         ''' end of input pipeline '''
 
         # ops and tensors in graph
-        # self.embeddings = self.net_forward(self.image_batch)
-        self.embeddings = tf.get_variable(name='emb',shape=[21*3,128],initializer=tf.truncated_normal_initializer(stddev=0.1))
-        self.loss = self.get_triplet_loss(self.embeddings, self.delta_placeholder)
-        self.summary_op,self.average_op = self.get_summary()
+        self.embeddings = self.net_forward(self.image_batch)
+        self.val_embeddings = self.net_forward(self.image_batch)
+        self.loss = self.get_triplet_loss(self.embeddings, self.label_batch)
+        self.summary_op, self.average_op = self.get_summary()
         with tf.control_dependencies([self.average_op]):
             self.opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
 
     def net_forward(self, image_batch):
         # convolution layers
-        net, _ = inference(image_batch, keep_probability=1.0, bottleneck_layer_size=128, phase_train=True, reuse=None)
+        net, _ = inference(image_batch, keep_probability=1.0, bottleneck_layer_size=128, weight_decay=0.0,
+                           phase_train=True, reuse=None)
         embeddings = slim.fully_connected(net, self.embedding_bits, activation_fn=None,
                                           weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
                                           weights_regularizer=slim.l2_regularizer(0.0))
@@ -115,10 +135,11 @@ class AgeClusterMachine():
         anchor = embeddings[0:self.batch_size:3][:]
         positive = embeddings[1:self.batch_size:3][:]
         negative = embeddings[2:self.batch_size:3][:]
+        deltas_ = tf.div(tf.to_float(tf.abs(deltas[0:self.batch_size:3] - deltas[2:self.batch_size:3])),40.0)
 
         pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
         neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
-        basic_loss = tf.add(tf.subtract(pos_dist, neg_dist), tf.reshape(deltas, (self.batch_size / 3,)))
+        basic_loss = tf.add(tf.subtract(pos_dist, neg_dist), tf.reshape(deltas_, (self.batch_size / 3,)))
         loss = tf.reduce_mean(tf.maximum(basic_loss, 0.0), 0)
         return loss
 
@@ -138,26 +159,123 @@ class AgeClusterMachine():
             tf.summary.scalar('original_loss', self.loss)
             average = tf.train.ExponentialMovingAverage(0.9)
             average_op = average.apply([self.loss])
-            tf.summary.scalar('averaged_loss', average.apply(self.loss))
+            tf.summary.scalar('averaged_loss', average.average(self.loss))
         with tf.name_scope('nof_triplets'):
             tf.summary.scalar('nof_triplets', self.nof_selected_age_triplets)
 
-        return tf.summary.merge_all(),average_op
+        return tf.summary.merge_all(), average_op
 
     def test(self):
         with tf.Session() as sess:
             embeddings = tf.get_variable(name='fake_embeddings', shape=[6.0, 2.0], dtype=tf.float32,
                                          initializer=tf.truncated_normal_initializer(stddev=1))
-            delta = tf.Variable(name='fake_delta', initial_value=[[1.0],
-                                                                  [2.0]], dtype=tf.float32)
-
+            # delta = tf.Variable(name='fake_delta', initial_value=[[1.0],
+            #                                                       [2.0]], dtype=tf.float32)
             sess.run(tf.global_variables_initializer())
             self.batch_size = 6
+            delta = [1.0, 2.0]
             print sess.run(embeddings)
-            print(sess.run(self.get_triplet_loss(embeddings, delta)))
+            print sess.run(self.get_triplet_loss(embeddings, delta),
+                           feed_dict={self.delta_placeholder: np.reshape(delta, (1, -1))})
 
     def train(self):
-        
+        sess = tf.Session()
+        sess.run(tf.global_variables_initializer())
+        coord = tf.train.Coordinator()
+        tf.train.start_queue_runners(coord=coord, sess=sess)
+        summary_writer = tf.summary.FileWriter(os.path.join(self.log_dir, datetime.now().isoformat()), sess.graph)
+        cacd = FileReader(self.data_dir, self.data_info, reproducible=True, contain_val=True, val_data_dir=self.val_dir,
+                          val_list=self.val_list)
+        # add an embedding to tensorboard
+        embedding = tf.Variable(tf.zeros([cacd.val_size, self.embedding_bits]), name="val_embedding")
+        assignment = embedding.assign(self.embeddings)
+        config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
+        embedding_config = config.embeddings.add()
+        embedding_config.tensor_name = embedding.name
+        embedding_config.sprite.image_path =  './data/face.png'
+        embedding_config.metadata_path = 'labels_1024.tsv'
+        # Specify the width and height of a single thumbnail.
+        embedding_config.sprite.single_image_dim.extend([28, 28])
+        tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer, config)
+
+        var = tf.trainable_variables()
+        var = [v for v in var if str(v.name).__contains__('Inception')]
+        saver = tf.train.Saver(var)
+        saver.restore(sess, self.model)
+
+        for triplet_selection in range(self.max_epoch):
+            # select age triplets
+            paths, labels = cacd.select_age_path(self.nof_sampled_age, self.nof_images_per_age)
+            nof_examples = len(paths)
+            path_array = np.reshape(paths, (-1, 3))
+            index_array = np.reshape(np.arange(nof_examples), (-1, 3))
+            embedding_array = np.zeros(shape=(nof_examples, self.embedding_bits))
+            label_index = []
+            # FIFO enqueue
+            sess.run(self.enqueue_op,
+                     feed_dict={self.path_placeholder: path_array, self.label_placeholder: index_array})
+
+            # forward propagation to get current embeddings
+            nof_batches = int(np.ceil(nof_examples / self.batch_size))
+            for batch_index in range(nof_batches):
+                batch_size = min(nof_examples - batch_index * self.batch_size, self.batch_size)
+                emb, index = sess.run([self.embeddings, self.label_batch],
+                                      feed_dict={self.batch_size_placeholder: batch_size})
+                embedding_array[index, :] = emb
+                label_index.append(index)
+            # labels = labels[np.reshape(label_index,(-1,1))]
+
+            triplets = select_triplets_by_label(embedding_array, self.nof_sampled_age, self.nof_images_per_age, labels)
+            triplet_path_array = paths[triplets][:]
+            triplet_label_array = labels[triplets][:]
+            nof_triplets = len(triplet_path_array)
+            print("%d triplets selected" % nof_triplets)
+
+            # FIFO enqueue
+            sess.run(self.enqueue_op,
+                     feed_dict={self.path_placeholder: triplet_path_array, self.label_placeholder: triplet_label_array})
+            # train on selected triplets
+            nof_batches = int(np.ceil(nof_triplets * 3 / self.batch_size))
+            for i in range(nof_batches):
+                batch_size = min(nof_triplets * 3 - i * self.batch_size, self.batch_size)
+                label_, loss, _ = sess.run(
+                    [self.label_batch, self.loss, self.opt],
+                    feed_dict={self.batch_size_placeholder: batch_size})
+                # write in summary
+                # summary_writer.add_summary(_sum, self.step)
+                progress(i + 1, nof_batches, str(triplet_selection) + 'th AGE Epoch',
+                         'Batches loss:' + str(loss))  # a command progress bar to watch training progress
+                self.step += 1
+
+                # save model
+                if self.step % 10000 == 0:
+                    saver.save(sess, self.model_dir, global_step=self.step)
+
+            if triplet_selection%5 ==0:
+
+
+
+def select_triplets_by_label(embeddings, nof_attr, nof_images_per_attr, labels):
+    triplet = []
+    for anchor_id in range(nof_attr * nof_images_per_attr):
+        dist = np.sum(np.square(embeddings - embeddings[anchor_id]), 1)
+        for pos_id in range(anchor_id + 1, (anchor_id // nof_images_per_attr + 1) * nof_images_per_attr):
+            neg_dist = np.copy(dist)
+            neg_dist[(anchor_id // nof_images_per_attr) * nof_images_per_attr:(
+                                                                              anchor_id // nof_images_per_attr + 1) * nof_images_per_attr] = np.NAN
+            deltas = (labels - labels[anchor_id]) / 80.0
+            neg_ids = np.where(neg_dist - dist[pos_id] < np.abs(deltas))[0]
+            nof_neg_ids = len(neg_ids)
+            if nof_neg_ids > 10:
+                # rand_id = np.random.randint(nof_neg_ids)
+                # neg_id = neg_ids[rand_id]
+                neg_id = np.argsort(neg_dist)[0:10]
+                neg_id = random.sample(neg_id, 1)[0]
+                triplet.append([anchor_id, pos_id, neg_id])
+    np.random.shuffle(triplet)
+    return triplet
+
+
 if __name__ == '__main__':
     instance = AgeClusterMachine()
-    instance.test()
+    instance.train()

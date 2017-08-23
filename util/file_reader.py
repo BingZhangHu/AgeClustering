@@ -36,17 +36,10 @@ class FileReader():
         self.data_info = sio.loadmat(data_info)
         self.prefix = data_dir
         self.age = np.squeeze(self.data_info['celebrityImageData']['age'][0][0])
+        self.total_images = len(self.age)
         self.identity = np.squeeze(self.data_info['celebrityImageData']['identity'][0][0])
         self.nof_identity = len(np.unique(self.identity))
         self.path = np.squeeze(self.data_info['celebrityImageData']['name'][0][0]).tolist()
-        # self.nof_images_at_identity = np.zeros([self.nof_identity, 1])
-        # for i in self.identity:
-        #     self.nof_images_at_identity[i - 1] += 1
-
-        self.total_images = len(self.age)
-        self.index_list = list(range(self.total_images))
-        np.random.shuffle(self.index_list)
-        self.current_index = 0
         # val data
         if contain_val:
             self.val_data_dir = val_data_dir
@@ -109,9 +102,11 @@ class FileReader():
                 images_selected = images_indices
             for image in images_selected:
                 try:
-                    paths.append(os.path.join(self.prefix, self.path[image][0].encode('utf-8').replace('jpg','png')))
+                    # paths.append(os.path.join(self.prefix, self.path[image][0].encode('utf-8').replace('jpg','png')))
+                    paths.append(os.path.join(self.prefix, self.path[image][0].encode('utf-8')))
                 except:
-                    paths.append(os.path.join(self.prefix, self.path[image][0].replace('jpg','png')))
+                    # paths.append(os.path.join(self.prefix, self.path[image][0].replace('jpg','png')))
+                    paths.append(os.path.join(self.prefix, self.path[image][0]))
                 labels.append(i)
         return np.asarray(paths), np.asarray(labels)
 

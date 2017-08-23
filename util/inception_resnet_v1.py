@@ -181,8 +181,7 @@ def inception_resnet_v1(inputs, is_training=True,
             with slim.arg_scope([slim.conv2d, slim.max_pool2d, slim.avg_pool2d],
                                 stride=1, padding='SAME'):
                 # 149 x 149 x 32
-                net = slim.conv2d(inputs, 32, 3, stride=2, padding='VALID',
-                                  scope='Conv2d_1a_3x3')
+                net = slim.conv2d(inputs, 32, 3, stride=2, padding='VALID', scope='Conv2d_1a_3x3')
                 end_points['Conv2d_1a_3x3'] = net
                 # 147 x 147 x 32
                 net = slim.conv2d(net, 32, 3, padding='VALID',
