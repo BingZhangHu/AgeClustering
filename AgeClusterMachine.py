@@ -58,7 +58,7 @@ class AgeClusterMachine():
         #
         self.model = '/scratch/BingZhang/facenet4drfr/model/20170512-110547/model-20170512-110547.ckpt-250000'
         self.log_dir = './log'
-        self.model_dir = './model/model.ckpt'
+        self.model_dir = './log/model.ckpt'
 
         # net parameters
         self.step = 0
