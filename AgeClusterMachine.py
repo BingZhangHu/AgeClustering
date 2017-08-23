@@ -267,7 +267,7 @@ class AgeClusterMachine():
                     feed_dict={self.batch_size_placeholder: batch_size})
                 # write in summary
                 # summary_writer.add_summary(_sum, self.step)
-                progress(i + 1, nof_batches, str(triplet_selection) + 'th AGE Epoch',
+                progress(i + 1, nof_batches, str(triplet_selection) + 'th Epoch',
                          'Batches loss:' + str(loss))  # a command progress bar to watch training progress
                 self.step += 1
 
