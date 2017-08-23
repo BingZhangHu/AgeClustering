@@ -262,11 +262,11 @@ class AgeClusterMachine():
             nof_batches = int(np.ceil(nof_triplets * 3 / self.batch_size))
             for i in range(nof_batches):
                 batch_size = min(nof_triplets * 3 - i * self.batch_size, self.batch_size)
-                label_, loss, _ = sess.run(
-                    [self.label_batch, self.loss, self.opt],
+                summary,label_, loss, _ = sess.run(
+                    [self.summary_op,self.label_batch, self.loss, self.opt],
                     feed_dict={self.batch_size_placeholder: batch_size})
                 # write in summary
-                # summary_writer.add_summary(_sum, self.step)
+                summary_writer.add_summary(summary, self.step)
                 progress(i + 1, nof_batches, str(triplet_selection) + 'th Epoch',
                          'Batches loss:' + str(loss))  # a command progress bar to watch training progress
                 self.step += 1
