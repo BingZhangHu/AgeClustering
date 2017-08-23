@@ -57,8 +57,8 @@ class AgeClusterMachine():
 
         #
         self.model = '/scratch/BingZhang/facenet4drfr/model/20170512-110547/model-20170512-110547.ckpt-250000'
-        self.log_dir = './log'
-        self.model_dir = './log/model.ckpt'
+        self.log_dir = os.path.join('./log', datetime.now().isoformat())
+        self.model_dir = os.path.join(self.log_dir,'model.ckpt')
 
         # net parameters
         self.step = 0
@@ -136,7 +136,7 @@ class AgeClusterMachine():
         anchor = embeddings[0:self.batch_size:3][:]
         positive = embeddings[1:self.batch_size:3][:]
         negative = embeddings[2:self.batch_size:3][:]
-        deltas_ = tf.div(tf.to_float(tf.abs(deltas[0:self.batch_size:3] - deltas[2:self.batch_size:3])), 40.0)
+        deltas_ = tf.div(tf.to_float(tf.abs(deltas[0:self.batch_size:3] - deltas[2:self.batch_size:3])), 80.0)
 
         pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
         neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
@@ -184,7 +184,7 @@ class AgeClusterMachine():
         sess.run(tf.global_variables_initializer())
         coord = tf.train.Coordinator()
         tf.train.start_queue_runners(coord=coord, sess=sess)
-        summary_writer = tf.summary.FileWriter(os.path.join(self.log_dir, datetime.now().isoformat()), sess.graph)
+        summary_writer = tf.summary.FileWriter(self.log_dir, sess.graph)
         cacd = FileReader(self.data_dir, self.data_info, reproducible=True, contain_val=True, val_data_dir=self.val_dir,
                           val_list=self.val_list)
         # add an embedding to tensorboard
