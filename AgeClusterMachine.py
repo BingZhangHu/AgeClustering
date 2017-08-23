@@ -228,13 +228,14 @@ class AgeClusterMachine():
                     val_embeddings_array[label, :] = emb
                 sess.run(assignment, feed_dict={self.val_embeddings: val_embeddings_array})
 
-            # select age triplets
+            # select examples to forward propagation
             paths, labels = cacd.select_age_path(self.nof_sampled_age, self.nof_images_per_age)
             nof_examples = len(paths)
             path_array = np.reshape(paths, (-1, 3))
             index_array = np.reshape(np.arange(nof_examples), (-1, 3))
             embedding_array = np.zeros(shape=(nof_examples, self.embedding_bits))
             label_index = []
+
             # FIFO enqueue
             sess.run(self.enqueue_op,
                      feed_dict={self.path_placeholder: path_array, self.label_placeholder: index_array})
@@ -249,6 +250,12 @@ class AgeClusterMachine():
                 label_index.append(index)
             # labels = labels[np.reshape(label_index,(-1,1))]
 
+            # compute affinity matrix on batch
+            aff = []
+            for index in range(nof_examples):
+                aff.append(np.sum(np.square(embedding_array[index][:] - embedding_array), 1))
+            aff_binarized = binarize_affinity(aff, self.nof_images_per_age)
+
             triplets = select_triplets_by_label(embedding_array, self.nof_sampled_age, self.nof_images_per_age, labels)
             triplet_path_array = paths[triplets][:]
             triplet_label_array = labels[triplets][:]
@@ -262,9 +269,17 @@ class AgeClusterMachine():
             nof_batches = int(np.ceil(nof_triplets * 3 / self.batch_size))
             for i in range(nof_batches):
                 batch_size = min(nof_triplets * 3 - i * self.batch_size, self.batch_size)
-                summary,label_, loss, _ = sess.run(
-                    [self.summary_op,self.label_batch, self.loss, self.opt],
-                    feed_dict={self.batch_size_placeholder: batch_size})
+                summary, label_, loss, _ = sess.run(
+                    [self.summary_op, self.label_batch, self.loss, self.opt],
+                    feed_dict={self.batch_size_placeholder: batch_size,
+                               self.age_affinity: np.reshape(aff, [1, self.age_sampled_examples,
+                                                                   self.age_sampled_examples,
+                                                                   1]),
+                               self.age_affinity_binarized: np.reshape(aff_binarized, [1,
+                                                                                       self.age_sampled_examples,
+                                                                                       self.age_sampled_examples,
+                                                                                       1]),
+                               self.nof_selected_age_triplets: nof_triplets, })
                 # write in summary
                 summary_writer.add_summary(summary, self.step)
                 progress(i + 1, nof_batches, str(triplet_selection) + 'th Epoch',
@@ -296,6 +311,13 @@ def select_triplets_by_label(embeddings, nof_attr, nof_images_per_attr, labels):
                 triplet.append([anchor_id, pos_id, neg_id])
     np.random.shuffle(triplet)
     return triplet
+
+
+def binarize_affinity(aff, k):
+    temp = np.argsort(aff)
+    ranks = np.arange(len(aff))[np.argsort(temp)]
+    ranks[np.where(ranks > k)] = 255
+    return ranks
 
 
 if __name__ == '__main__':
