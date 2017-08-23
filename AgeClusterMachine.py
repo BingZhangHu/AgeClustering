@@ -38,16 +38,17 @@ class AgeClusterMachine():
 
     def __init__(self):
         # data directory
-        # self.data_dir = '/scratch/BingZhang/dataset/CACD2000_Cropped'
-        # self.data_info = '/scratch/BingZhang/dataset/CACD2000/celenew2.mat'
+        self.data_dir = '/scratch/BingZhang/dataset/CACD2000_Cropped'
+        self.data_info = '/scratch/BingZhang/dataset/CACD2000/celenew2.mat'
 
-        self.data_dir = '/home/bingzhang/Documents/Dataset/CACD/CACD2000'
-        self.data_info = '/home/bingzhang/Documents/Dataset/CACD/celenew2.mat'
+        # self.data_dir = '/home/bingzhang/Documents/Dataset/CACD/CACD2000'
+        # self.data_info = '/home/bingzhang/Documents/Dataset/CACD/celenew2.mat'
 
         # validation data
 
         self.val_dir = './'
         self.val_list = './data/val_list.txt'
+        self.val_size = 144
 
         # image size
         self.image_height = 250
@@ -57,7 +58,7 @@ class AgeClusterMachine():
         #
         self.model = '/scratch/BingZhang/facenet4drfr/model/20170512-110547/model-20170512-110547.ckpt-250000'
         self.log_dir = './log'
-        self.model_dir = './model'
+        self.model_dir = './model/model.ckpt'
 
         # net parameters
         self.step = 0
@@ -77,7 +78,8 @@ class AgeClusterMachine():
                                                      [None, self.age_sampled_examples, self.age_sampled_examples, 1],
                                                      name='age_affinity_binarized')
         self.nof_selected_age_triplets = tf.placeholder(tf.int32, name='nof_triplet')
-
+        self.val_embeddings = tf.placeholder(tf.float32, [self.val_size, self.embedding_bits],
+                                             name='val_embeddings_placeholder')
         ''' input pipeline '''
         # placeholders
         self.path_placeholder = tf.placeholder(tf.string, [None, 3], name='paths')
@@ -115,7 +117,6 @@ class AgeClusterMachine():
 
         # ops and tensors in graph
         self.embeddings = self.net_forward(self.image_batch)
-        self.val_embeddings = self.net_forward(self.image_batch)
         self.loss = self.get_triplet_loss(self.embeddings, self.label_batch)
         self.summary_op, self.average_op = self.get_summary()
         with tf.control_dependencies([self.average_op]):
@@ -135,7 +136,7 @@ class AgeClusterMachine():
         anchor = embeddings[0:self.batch_size:3][:]
         positive = embeddings[1:self.batch_size:3][:]
         negative = embeddings[2:self.batch_size:3][:]
-        deltas_ = tf.div(tf.to_float(tf.abs(deltas[0:self.batch_size:3] - deltas[2:self.batch_size:3])),40.0)
+        deltas_ = tf.div(tf.to_float(tf.abs(deltas[0:self.batch_size:3] - deltas[2:self.batch_size:3])), 40.0)
 
         pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
         neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
@@ -165,18 +166,18 @@ class AgeClusterMachine():
 
         return tf.summary.merge_all(), average_op
 
-    def test(self):
-        with tf.Session() as sess:
-            embeddings = tf.get_variable(name='fake_embeddings', shape=[6.0, 2.0], dtype=tf.float32,
-                                         initializer=tf.truncated_normal_initializer(stddev=1))
-            # delta = tf.Variable(name='fake_delta', initial_value=[[1.0],
-            #                                                       [2.0]], dtype=tf.float32)
-            sess.run(tf.global_variables_initializer())
-            self.batch_size = 6
-            delta = [1.0, 2.0]
-            print sess.run(embeddings)
-            print sess.run(self.get_triplet_loss(embeddings, delta),
-                           feed_dict={self.delta_placeholder: np.reshape(delta, (1, -1))})
+    # def test(self):
+    #     with tf.Session() as sess:
+    #         embeddings = tf.get_variable(name='fake_embeddings', shape=[6.0, 2.0], dtype=tf.float32,
+    #                                      initializer=tf.truncated_normal_initializer(stddev=1))
+    #         # delta = tf.Variable(name='fake_delta', initial_value=[[1.0],
+    #         #                                                       [2.0]], dtype=tf.float32)
+    #         sess.run(tf.global_variables_initializer())
+    #         self.batch_size = 6
+    #         delta = [1.0, 2.0]
+    #         print sess.run(embeddings)
+    #         print sess.run(self.get_triplet_loss(embeddings, delta),
+    #                        feed_dict={self.delta_placeholder: np.reshape(delta, (1, -1))})
 
     def train(self):
         sess = tf.Session()
@@ -188,22 +189,45 @@ class AgeClusterMachine():
                           val_list=self.val_list)
         # add an embedding to tensorboard
         embedding = tf.Variable(tf.zeros([cacd.val_size, self.embedding_bits]), name="val_embedding")
-        assignment = embedding.assign(self.embeddings)
+        assignment = embedding.assign(self.val_embeddings)
         config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
         embedding_config = config.embeddings.add()
         embedding_config.tensor_name = embedding.name
-        embedding_config.sprite.image_path =  './data/face.png'
-        embedding_config.metadata_path = 'labels_1024.tsv'
+        embedding_config.sprite.image_path = './data/face.png'
+        embedding_config.metadata_path = './data/label.tsv'
         # Specify the width and height of a single thumbnail.
-        embedding_config.sprite.single_image_dim.extend([28, 28])
+        embedding_config.sprite.single_image_dim.extend([64, 64])
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer, config)
 
         var = tf.trainable_variables()
         var = [v for v in var if str(v.name).__contains__('Inception')]
         saver = tf.train.Saver(var)
         saver.restore(sess, self.model)
+        saved_time = 0
 
         for triplet_selection in range(self.max_epoch):
+
+            if triplet_selection % 5 == 0 or triplet_selection < 5:
+                val_paths = cacd.get_val(cacd.val_size)
+                val_path_array = np.reshape(val_paths, (-1, 3))
+                val_label_array = np.reshape(np.arange(cacd.val_size), (-1, 3))
+                val_embeddings_array = np.zeros(shape=(cacd.val_size, self.embedding_bits))
+
+                # FIFO enqueue
+                sess.run(self.enqueue_op,
+                         feed_dict={self.path_placeholder: val_path_array,
+                                    self.label_placeholder: val_label_array})
+
+                # forward propagation to get val embeddings
+                print('Forward propagation on validation set')
+                nof_batches = int(np.ceil(cacd.val_size / self.batch_size))
+                for i in range(nof_batches):
+                    batch_size = min(cacd.val_size - i * self.batch_size, self.batch_size)
+                    emb, label = sess.run([self.embeddings, self.label_batch],
+                                          feed_dict={self.batch_size_placeholder: batch_size})
+                    val_embeddings_array[label, :] = emb
+                sess.run(assignment, feed_dict={self.val_embeddings: val_embeddings_array})
+
             # select age triplets
             paths, labels = cacd.select_age_path(self.nof_sampled_age, self.nof_images_per_age)
             nof_examples = len(paths)
@@ -248,11 +272,9 @@ class AgeClusterMachine():
                 self.step += 1
 
                 # save model
-                if self.step % 10000 == 0:
+                if self.step % 10000 == 0 or saved_time < 5:
                     saver.save(sess, self.model_dir, global_step=self.step)
-
-            if triplet_selection%5 ==0:
-
+                    saved_time += 1
 
 
 def select_triplets_by_label(embeddings, nof_attr, nof_images_per_attr, labels):
@@ -262,7 +284,7 @@ def select_triplets_by_label(embeddings, nof_attr, nof_images_per_attr, labels):
         for pos_id in range(anchor_id + 1, (anchor_id // nof_images_per_attr + 1) * nof_images_per_attr):
             neg_dist = np.copy(dist)
             neg_dist[(anchor_id // nof_images_per_attr) * nof_images_per_attr:(
-                                                                              anchor_id // nof_images_per_attr + 1) * nof_images_per_attr] = np.NAN
+                                                                                  anchor_id // nof_images_per_attr + 1) * nof_images_per_attr] = np.NAN
             deltas = (labels - labels[anchor_id]) / 80.0
             neg_ids = np.where(neg_dist - dist[pos_id] < np.abs(deltas))[0]
             nof_neg_ids = len(neg_ids)
