@@ -296,8 +296,6 @@ class AgeClusterMachine():
                 if self.step % 20000 == 0 :
                     saver.save(sess, self.model_dir, global_step=self.step)
                 if self.step %1000==0 or saved_time<5:
-                    print self.val_embeddings_array
-                    print '\n\n----------------------------\n\n'
                     print sess.run(self.assign_op,feed_dict={self.val_embeddings_placeholder:self.val_embeddings_array})
                     emb_saver.save(sess,os.path.join(self.prefix,'model_emb.ckpt'),global_step=self.step)
                     saved_time+=1
