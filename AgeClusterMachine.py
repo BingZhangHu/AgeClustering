@@ -303,14 +303,14 @@ class AgeClusterMachine():
                 if self.step % 1000 == 0:
                     sess.run(self.assign_op,
                              feed_dict={self.val_embeddings_placeholder: self.val_embeddings_array})
-                    filename = './data%d.mat' % self.step
+                    filename = './emb/data%d.mat' % self.step
                     sio.savemat(filename, {'data': self.val_embeddings_array})
                     emb_saver.save(sess, os.path.join(self.path.log_base, 'model_emb.ckpt'), global_step=self.step)
                     saved_time += 1
             if saved_time < 5:
                 sess.run(self.assign_op,
                          feed_dict={self.val_embeddings_placeholder: self.val_embeddings_array})
-                filename = './data%d.mat' % self.step
+                filename = './emb/data%d.mat' % self.step
                 sio.savemat(filename, {'data': self.val_embeddings_array})
                 emb_saver.save(sess, os.path.join(self.path.log_base, 'model_emb.ckpt'), global_step=self.step)
                 saved_time += 1
