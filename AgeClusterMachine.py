@@ -156,12 +156,12 @@ class AgeClusterMachine():
         with tf.name_scope('enclose-intra-distances'):
             loss_3 = tf.reduce_mean(pos_dist)
 
-        with tf.name_scope('loss'):
+        with tf.name_scope('loss-1'):
             tf.summary.scalar('loss_1',loss_1)
             tf.summary.scalar('loss_2',loss_2)
             tf.summary.scalar('loss_3',loss_3)
 
-        return loss_1 + loss_2 +loss_3, tf.reduce_mean(deltas_,0)
+        return loss_1 + loss_2 +0.1*loss_3, tf.reduce_mean(deltas_,0)
 
     # def get_triplet_loss_v2(self,embeddings, deltas):
 
