@@ -146,13 +146,25 @@ class AgeClusterMachine():
         basic_loss_2 = tf.add(tf.subtract(pos_dist, neg_dist_2), deltas_)
 
         with tf.name_scope('distances'):
-            tf.summary.histogram('anchor-pos', pos_dist)
-            tf.summary.histogram('anchor-neg', neg_dist_1)
-            tf.summary.histogram('pos-neg', neg_dist_2)
+            tf.summary.histogram('pull/anchor-pos', pos_dist)
+            tf.summary.histogram('push/anchor-neg', neg_dist_1)
+            tf.summary.histogram('push/pos-neg', neg_dist_2)
 
         loss_1 = tf.reduce_mean(tf.maximum(basic_loss_1, 0.0), 0)
         loss_2 = tf.reduce_mean(tf.maximum(basic_loss_2, 0.0), 0)
-        return loss_1 + loss_2, tf.reduce_mean(deltas_,0)
+
+        with tf.name_scope('enclose-intra-distances'):
+            loss_3 = tf.reduce_mean(pos_dist)
+
+        with tf.name_scope('loss'):
+            tf.summary.scalar('loss_1',loss_1)
+            tf.summary.scalar('loss_2',loss_2)
+            tf.summary.scalar('loss_3',loss_3)
+
+        return loss_1 + loss_2 +loss_3, tf.reduce_mean(deltas_,0)
+
+    # def get_triplet_loss_v2(self,embeddings, deltas):
+
 
     # def get_triplet_loss_facenet(self, anchor, positive, negative, delta):
     #     pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
