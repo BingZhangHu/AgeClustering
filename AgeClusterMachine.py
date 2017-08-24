@@ -60,7 +60,7 @@ class AgeClusterMachine():
         self.max_epoch = 1000
 
         self.nof_sampled_age = 15
-        self.nof_images_per_age = 10
+        self.nof_images_per_age = 15
         self.age_sampled_examples = self.nof_images_per_age * self.nof_sampled_age
 
         # age affinity matrix, add to summary to be monitored
