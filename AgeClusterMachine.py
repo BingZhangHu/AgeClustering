@@ -57,7 +57,7 @@ class AgeClusterMachine():
         self.learning_rate = 0.0001
         self.batch_size = 30
         self.embedding_bits = 128
-        self.max_epoch = 1000
+        self.max_epoch = 10000
 
         self.nof_sampled_age = 15
         self.nof_images_per_age = 15
