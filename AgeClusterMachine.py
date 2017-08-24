@@ -19,6 +19,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+from __future__ import division
 from util.inception_resnet_v1 import *
 from util.file_reader import *
 import os
@@ -30,39 +31,26 @@ from util.progress import *
 from tensorflow.contrib.tensorboard.plugins import projector
 import scipy.io as sio
 from shutil import copyfile
+from util.env_path import *
+import argparse
+
 
 class AgeClusterMachine():
     """
     set different hinge for different age gap
     """
 
-    def __init__(self):
+    def __init__(self, env_path):
         # data directory
-        self.data_dir = '/scratch/BingZhang/dataset/CACD2000_Cropped'
-        self.data_info = '/scratch/BingZhang/dataset/CACD2000/celenew2.mat'
-
-        # self.data_dir = '/home/bingzhang/Documents/Dataset/CACD/CACD2000'
-        # self.data_info = '/home/bingzhang/Documents/Dataset/CACD/celenew2.mat'
+        self.path = env_path
 
         # validation data
-
-        self.val_dir = '/scratch/BingZhang/lfw_250/'
-        # self.val_dir = '/home/bingzhang/Documents/Dataset/lfw'
-        self.val_list = './data/val_list.txt'
         self.val_size = 144
 
         # image size
         self.image_height = 250
         self.image_width = 250
         self.image_channel = 3
-
-        #
-        self.model = '/scratch/BingZhang/facenet4drfr/model/20170512-110547/model-20170512-110547.ckpt-250000'
-        # self.model = '/home/bingzhang/Workspace/PycharmProjects/20170512-110547/model-20170512-110547.ckpt-250000'
-        self.cwd = os.getcwd()
-        self.prefix = os.path.join(self.cwd, 'log')
-        self.log_dir = os.path.join(self.prefix, datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S'))
-        self.model_dir = os.path.join(self.prefix, 'model.ckpt')
 
         # net parameters
         self.step = 0
@@ -71,8 +59,8 @@ class AgeClusterMachine():
         self.embedding_bits = 128
         self.max_epoch = 1000
 
-        self.nof_sampled_age = 20
-        self.nof_images_per_age = 45
+        self.nof_sampled_age = 15
+        self.nof_images_per_age = 10
         self.age_sampled_examples = self.nof_images_per_age * self.nof_sampled_age
 
         # age affinity matrix, add to summary to be monitored
@@ -82,9 +70,10 @@ class AgeClusterMachine():
                                                      [None, self.age_sampled_examples, self.age_sampled_examples, 1],
                                                      name='age_affinity_binarized')
         self.nof_selected_age_triplets = tf.placeholder(tf.int32, name='nof_triplet')
-        self.val_embeddings_array = np.zeros(shape=(self.val_size, self.embedding_bits),dtype='float32')
-        self.val_embeddings_placeholder = tf.placeholder(tf.float32,[self.val_size,self.embedding_bits],name='val_embeddings_placeholder')
-        self.val_embeddings = tf.Variable(tf.zeros([self.val_size,self.embedding_bits]),name='val_embeddings')
+        self.val_embeddings_array = np.zeros(shape=(self.val_size, self.embedding_bits), dtype='float32')
+        self.val_embeddings_placeholder = tf.placeholder(tf.float32, [self.val_size, self.embedding_bits],
+                                                         name='val_embeddings_placeholder')
+        self.val_embeddings = tf.Variable(tf.zeros([self.val_size, self.embedding_bits]), name='val_embeddings')
         self.assign_op = self.val_embeddings.assign(self.val_embeddings_placeholder)
         ''' input pipeline '''
         # placeholders
@@ -134,7 +123,11 @@ class AgeClusterMachine():
                            phase_train=True, reuse=None)
         embeddings = slim.fully_connected(net, self.embedding_bits, activation_fn=None,
                                           weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
-                                          weights_regularizer=slim.l2_regularizer(0.0))
+                                          weights_regularizer=slim.l2_regularizer(0.0), scope='fc-embedding')
+        weights = slim.get_model_variables('fc-embedding')[0]
+        bias = slim.get_model_variables('fc-embedding')[1]
+        variable_summaries(weights, 'weight')
+        variable_summaries(bias, 'bias')
         embeddings = tf.nn.l2_normalize(embeddings, dim=1, epsilon=1e-12, name='embeddings')
         return embeddings
 
@@ -142,21 +135,32 @@ class AgeClusterMachine():
         anchor = embeddings[0:self.batch_size:3][:]
         positive = embeddings[1:self.batch_size:3][:]
         negative = embeddings[2:self.batch_size:3][:]
-        deltas_ = tf.div(tf.to_float(tf.abs(deltas[0:self.batch_size:3] - deltas[2:self.batch_size:3])), 80.0)
+        deltas_ = tf.divide(tf.to_float(tf.abs(deltas[0:self.batch_size:3] - deltas[2:self.batch_size:3])), 80.0)
 
         pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
-        neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
-        basic_loss = tf.add(tf.subtract(pos_dist, neg_dist), tf.reshape(deltas_, (self.batch_size / 3,)))
-        loss = tf.reduce_mean(tf.maximum(basic_loss, 0.0), 0)
-        return loss
+        neg_dist_1 = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
+        neg_dist_2 = tf.reduce_sum(tf.square(tf.subtract(positive, negative)), 1)
+        # basic_loss = tf.add(tf.subtract(pos_dist, neg_dist), tf.reshape(deltas_, (self.batch_size // 3,)))
 
-    def get_triplet_loss_facenet(self, anchor, positive, negative, delta):
-        pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
-        neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
+        basic_loss_1 = tf.add(tf.subtract(pos_dist, neg_dist_1), deltas_)
+        basic_loss_2 = tf.add(tf.subtract(pos_dist, neg_dist_2), deltas_)
 
-        basic_loss = tf.add(tf.subtract(pos_dist, neg_dist), delta)
-        loss = tf.reduce_mean(tf.maximum(basic_loss, 0.0), 0)
-        return loss
+        with tf.name_scope('distances'):
+            tf.summary.histogram('anchor-pos', pos_dist)
+            tf.summary.histogram('anchor-neg', neg_dist_1)
+            tf.summary.histogram('pos-neg', neg_dist_1)
+
+        loss_1 = tf.reduce_mean(tf.maximum(basic_loss_1, 0.0), 0)
+        loss_2 = tf.reduce_mean(tf.maximum(basic_loss_2, 0.0), 0)
+        return loss_1 + loss_2
+
+    # def get_triplet_loss_facenet(self, anchor, positive, negative, delta):
+    #     pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
+    #     neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
+    #
+    #     basic_loss = tf.add(tf.subtract(pos_dist, neg_dist), delta)
+    #     loss = tf.reduce_mean(tf.maximum(basic_loss, 0.0), 0)
+    #     return loss
 
     def get_summary(self):
         with tf.name_scope('affinity'):
@@ -190,17 +194,18 @@ class AgeClusterMachine():
         sess.run(tf.global_variables_initializer())
         coord = tf.train.Coordinator()
         tf.train.start_queue_runners(coord=coord, sess=sess)
-        summary_writer = tf.summary.FileWriter(self.log_dir, sess.graph)
-        copyfile('./data/face.png',os.path.join(self.log_dir,'face.png'))
-        copyfile('./data/label.tsv',os.path.join(self.log_dir,'label.tsv'))
-        cacd = FileReader(self.data_dir, self.data_info, reproducible=True, contain_val=True, val_data_dir=self.val_dir,
-                          val_list=self.val_list)
+        summary_writer = tf.summary.FileWriter(self.path.log_dir, sess.graph)
+        copyfile('./data/face.png', os.path.join(self.path.log_dir, 'face.png'))
+        copyfile('./data/label.tsv', os.path.join(self.path.log_dir, 'label.tsv'))
+        cacd = FileReader(self.path.data_dir, self.path.data_info, reproducible=True, contain_val=True,
+                          val_data_dir=self.path.val_dir,
+                          val_list=self.path.val_list)
         # add an embedding to tensorboard
         config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
         embedding_config = config.embeddings.add()
         embedding_config.tensor_name = self.val_embeddings.name
-        embedding_config.sprite.image_path = os.path.join(self.log_dir, 'face.png')
-        embedding_config.metadata_path = os.path.join(self.log_dir, 'label.tsv')
+        embedding_config.sprite.image_path = os.path.join(self.path.log_dir, 'face.png')
+        embedding_config.metadata_path = os.path.join(self.path.log_dir, 'label.tsv')
         # Specify the width and height of a single thumbnail.
         embedding_config.sprite.single_image_dim.extend([64, 64])
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer, config)
@@ -208,14 +213,13 @@ class AgeClusterMachine():
         var = tf.trainable_variables()
         var = [v for v in var if str(v.name).__contains__('Inception')]
         saver = tf.train.Saver(var)
-        saver.restore(sess, self.model)
+        saver.restore(sess, self.path.model)
         emb_saver = tf.train.Saver([self.val_embeddings])
         saved_time = 0
 
-
         for triplet_selection in range(self.max_epoch):
 
-            if triplet_selection % 5 == 0 or triplet_selection < 5:
+            if triplet_selection % 5 == 0 or saved_time < 5:
                 val_paths = cacd.get_val(cacd.val_size)
                 val_path_array = np.reshape(val_paths, (-1, 3))
                 val_label_array = np.reshape(np.arange(cacd.val_size), (-1, 3))
@@ -233,6 +237,7 @@ class AgeClusterMachine():
                     emb, label = sess.run([self.embeddings, self.label_batch],
                                           feed_dict={self.batch_size_placeholder: batch_size})
                     self.val_embeddings_array[label, :] = emb
+                print self.val_embeddings_array
 
             # select examples to forward propagation
             paths, labels = cacd.select_age_path(self.nof_sampled_age, self.nof_images_per_age)
@@ -293,12 +298,22 @@ class AgeClusterMachine():
                 self.step += 1
 
                 # save model
-                if self.step % 20000 == 0 :
-                    saver.save(sess, self.model_dir, global_step=self.step)
-                if self.step %1000==0 or saved_time<5:
-                    print sess.run(self.assign_op,feed_dict={self.val_embeddings_placeholder:self.val_embeddings_array})
-                    emb_saver.save(sess,os.path.join(self.prefix,'model_emb.ckpt'),global_step=self.step)
-                    saved_time+=1
+                if self.step % 20000 == 0:
+                    saver.save(sess, self.path.model_dir, global_step=self.step)
+                if self.step % 1000 == 0:
+                    sess.run(self.assign_op,
+                             feed_dict={self.val_embeddings_placeholder: self.val_embeddings_array})
+                    filename = './data%d.mat' % self.step
+                    sio.savemat(filename, {'data': self.val_embeddings_array})
+                    emb_saver.save(sess, os.path.join(self.path.log_base, 'model_emb.ckpt'), global_step=self.step)
+                    saved_time += 1
+            if saved_time < 5:
+                sess.run(self.assign_op,
+                         feed_dict={self.val_embeddings_placeholder: self.val_embeddings_array})
+                filename = './data%d.mat' % self.step
+                sio.savemat(filename, {'data': self.val_embeddings_array})
+                emb_saver.save(sess, os.path.join(self.path.log_base, 'model_emb.ckpt'), global_step=self.step)
+                saved_time += 1
 
 
 def select_triplets_by_label(embeddings, nof_attr, nof_images_per_attr, labels):
@@ -329,6 +344,16 @@ def binarize_affinity(aff, k):
     return ranks
 
 
+def parse_arguments(argv):
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--workplace', type=str,
+                        help='where the code runs', default='server')
+
+    return parser.parse_args(argv)
+
+
 if __name__ == '__main__':
-    instance = AgeClusterMachine()
+    env_path = ENVPATH(parse_arguments(sys.argv[1:]).workplace)
+    instance = AgeClusterMachine(env_path)
     instance.train()
