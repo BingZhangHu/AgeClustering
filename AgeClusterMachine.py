@@ -115,7 +115,7 @@ class AgeClusterMachine():
         self.loss,self.mean_delta = self.get_triplet_loss(self.embeddings, self.label_batch)
         self.summary_op, self.average_op = self.get_summary()
         with tf.control_dependencies([self.average_op]):
-            self.opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
+            self.opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate,beta1=0.9, beta2=0.999, epsilon=0.1).minimize(self.loss)
 
     def net_forward(self, image_batch):
         # convolution layers
@@ -148,7 +148,7 @@ class AgeClusterMachine():
         with tf.name_scope('distances'):
             tf.summary.histogram('anchor-pos', pos_dist)
             tf.summary.histogram('anchor-neg', neg_dist_1)
-            tf.summary.histogram('pos-neg', neg_dist_1)
+            tf.summary.histogram('pos-neg', neg_dist_2)
 
         loss_1 = tf.reduce_mean(tf.maximum(basic_loss_1, 0.0), 0)
         loss_2 = tf.reduce_mean(tf.maximum(basic_loss_2, 0.0), 0)
