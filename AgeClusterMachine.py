@@ -54,7 +54,7 @@ class AgeClusterMachine():
 
         # net parameters
         self.step = 0
-        self.learning_rate = 0.00001
+        self.learning_rate = 0.0001
         self.batch_size = 30
         self.embedding_bits = 128
         self.max_epoch = 1000
