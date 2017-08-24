@@ -112,7 +112,7 @@ class AgeClusterMachine():
 
         # ops and tensors in graph
         self.embeddings = self.net_forward(self.image_batch)
-        self.loss = self.get_triplet_loss(self.embeddings, self.label_batch)
+        self.loss,self.mean_delta = self.get_triplet_loss(self.embeddings, self.label_batch)
         self.summary_op, self.average_op = self.get_summary()
         with tf.control_dependencies([self.average_op]):
             self.opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
@@ -152,7 +152,7 @@ class AgeClusterMachine():
 
         loss_1 = tf.reduce_mean(tf.maximum(basic_loss_1, 0.0), 0)
         loss_2 = tf.reduce_mean(tf.maximum(basic_loss_2, 0.0), 0)
-        return loss_1 + loss_2
+        return loss_1 + loss_2, tf.reduce_mean(deltas_,0)
 
     # def get_triplet_loss_facenet(self, anchor, positive, negative, delta):
     #     pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
@@ -280,8 +280,8 @@ class AgeClusterMachine():
             nof_batches = int(np.ceil(nof_triplets * 3 / self.batch_size))
             for i in range(nof_batches):
                 batch_size = min(nof_triplets * 3 - i * self.batch_size, self.batch_size)
-                summary, label_, loss, _ = sess.run(
-                    [self.summary_op, self.label_batch, self.loss, self.opt],
+                summary, label_, loss, mean_delta, _ = sess.run(
+                    [self.summary_op, self.label_batch, self.loss, self.mean_delta,self.opt],
                     feed_dict={self.batch_size_placeholder: batch_size,
                                self.age_affinity: np.reshape(aff, [1, self.age_sampled_examples,
                                                                    self.age_sampled_examples,
@@ -294,7 +294,7 @@ class AgeClusterMachine():
                 # write in summary
                 summary_writer.add_summary(summary, self.step)
                 progress(i + 1, nof_batches, str(triplet_selection) + 'th Epoch',
-                         'Batches loss:' + str(loss))  # a command progress bar to watch training progress
+                         'Batches loss:' + str(loss)+' mean_delta'+str(mean_delta))  # a command progress bar to watch training progress
                 self.step += 1
 
                 # save model
