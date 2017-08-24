@@ -29,7 +29,7 @@ from tensorflow.python.ops import data_flow_ops
 from util.progress import *
 from tensorflow.contrib.tensorboard.plugins import projector
 import scipy.io as sio
-
+from shutil import copyfile
 
 class AgeClusterMachine():
     """
@@ -47,6 +47,7 @@ class AgeClusterMachine():
         # validation data
 
         self.val_dir = '/scratch/BingZhang/lfw_250/'
+        # self.val_dir = '/home/bingzhang/Documents/Dataset/lfw'
         self.val_list = './data/val_list.txt'
         self.val_size = 144
 
@@ -57,8 +58,11 @@ class AgeClusterMachine():
 
         #
         self.model = '/scratch/BingZhang/facenet4drfr/model/20170512-110547/model-20170512-110547.ckpt-250000'
-        self.log_dir = os.path.join('./log', datetime.now().isoformat())
-        self.model_dir = os.path.join('./log','model.ckpt')
+        # self.model = '/home/bingzhang/Workspace/PycharmProjects/20170512-110547/model-20170512-110547.ckpt-250000'
+        self.cwd = os.getcwd()
+        self.prefix = os.path.join(self.cwd, 'log')
+        self.log_dir = os.path.join(self.prefix, datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S'))
+        self.model_dir = os.path.join(self.prefix, 'model.ckpt')
 
         # net parameters
         self.step = 0
@@ -78,8 +82,10 @@ class AgeClusterMachine():
                                                      [None, self.age_sampled_examples, self.age_sampled_examples, 1],
                                                      name='age_affinity_binarized')
         self.nof_selected_age_triplets = tf.placeholder(tf.int32, name='nof_triplet')
-        self.val_embeddings = tf.placeholder(tf.float32, [self.val_size, self.embedding_bits],
-                                             name='val_embeddings_placeholder')
+        self.val_embeddings_array = np.zeros(shape=(self.val_size, self.embedding_bits),dtype='float32')
+        self.val_embeddings_placeholder = tf.placeholder(tf.float32,[self.val_size,self.embedding_bits],name='val_embeddings_placeholder')
+        self.val_embeddings = tf.Variable(tf.zeros([self.val_size,self.embedding_bits]),name='val_embeddings')
+        self.assign_op = self.val_embeddings.assign(self.val_embeddings_placeholder)
         ''' input pipeline '''
         # placeholders
         self.path_placeholder = tf.placeholder(tf.string, [None, 3], name='paths')
@@ -185,16 +191,16 @@ class AgeClusterMachine():
         coord = tf.train.Coordinator()
         tf.train.start_queue_runners(coord=coord, sess=sess)
         summary_writer = tf.summary.FileWriter(self.log_dir, sess.graph)
+        copyfile('./data/face.png',os.path.join(self.log_dir,'face.png'))
+        copyfile('./data/label.tsv',os.path.join(self.log_dir,'label.tsv'))
         cacd = FileReader(self.data_dir, self.data_info, reproducible=True, contain_val=True, val_data_dir=self.val_dir,
                           val_list=self.val_list)
         # add an embedding to tensorboard
-        embedding = tf.Variable(tf.zeros([cacd.val_size, self.embedding_bits]), name="val_embedding")
-        assignment = embedding.assign(self.val_embeddings)
         config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
         embedding_config = config.embeddings.add()
-        embedding_config.tensor_name = embedding.name
-        embedding_config.sprite.image_path = './data/face.png'
-        embedding_config.metadata_path = './data/label.tsv'
+        embedding_config.tensor_name = self.val_embeddings.name
+        embedding_config.sprite.image_path = os.path.join(self.log_dir, 'face.png')
+        embedding_config.metadata_path = os.path.join(self.log_dir, 'label.tsv')
         # Specify the width and height of a single thumbnail.
         embedding_config.sprite.single_image_dim.extend([64, 64])
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer, config)
@@ -203,9 +209,10 @@ class AgeClusterMachine():
         var = [v for v in var if str(v.name).__contains__('Inception')]
         saver = tf.train.Saver(var)
         saver.restore(sess, self.model)
+        emb_saver = tf.train.Saver([self.val_embeddings])
         saved_time = 0
 
-        val_embeddings_array = np.zeros(shape=(cacd.val_size, self.embedding_bits))
+
         for triplet_selection in range(self.max_epoch):
 
             if triplet_selection % 5 == 0 or triplet_selection < 5:
@@ -225,8 +232,7 @@ class AgeClusterMachine():
                     batch_size = min(cacd.val_size - i * self.batch_size, self.batch_size)
                     emb, label = sess.run([self.embeddings, self.label_batch],
                                           feed_dict={self.batch_size_placeholder: batch_size})
-                    val_embeddings_array[label, :] = emb
-                sess.run(assignment, feed_dict={self.val_embeddings: val_embeddings_array})
+                    self.val_embeddings_array[label, :] = emb
 
             # select examples to forward propagation
             paths, labels = cacd.select_age_path(self.nof_sampled_age, self.nof_images_per_age)
@@ -270,7 +276,7 @@ class AgeClusterMachine():
             for i in range(nof_batches):
                 batch_size = min(nof_triplets * 3 - i * self.batch_size, self.batch_size)
                 summary, label_, loss, _ = sess.run(
-                    [self.summary_op, assignment,self.label_batch, self.loss, self.opt],
+                    [self.summary_op, self.label_batch, self.loss, self.opt],
                     feed_dict={self.batch_size_placeholder: batch_size,
                                self.age_affinity: np.reshape(aff, [1, self.age_sampled_examples,
                                                                    self.age_sampled_examples,
@@ -279,8 +285,7 @@ class AgeClusterMachine():
                                                                                        self.age_sampled_examples,
                                                                                        self.age_sampled_examples,
                                                                                        1]),
-                               self.nof_selected_age_triplets: nof_triplets,
-                               self.val_embeddings: val_embeddings_array})
+                               self.nof_selected_age_triplets: nof_triplets})
                 # write in summary
                 summary_writer.add_summary(summary, self.step)
                 progress(i + 1, nof_batches, str(triplet_selection) + 'th Epoch',
@@ -288,9 +293,14 @@ class AgeClusterMachine():
                 self.step += 1
 
                 # save model
-                if self.step % 10000 == 0 or saved_time < 5:
+                if self.step % 20000 == 0 :
                     saver.save(sess, self.model_dir, global_step=self.step)
-                    saved_time += 1
+                if self.step %1000==0 or saved_time<5:
+                    print self.val_embeddings_array
+                    print '\n\n----------------------------\n\n'
+                    print sess.run(self.assign_op,feed_dict={self.val_embeddings_placeholder:self.val_embeddings_array})
+                    emb_saver.save(sess,os.path.join(self.prefix,'model_emb.ckpt'),global_step=self.step)
+                    saved_time+=1
 
 
 def select_triplets_by_label(embeddings, nof_attr, nof_images_per_attr, labels):
