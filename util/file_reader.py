@@ -45,8 +45,6 @@ class FileReader():
             self.age = np.squeeze(self.data_info['morph']['age'][0][0])
             self.total_images = len(self.age)
             self.path = np.squeeze(self.data_info['morph']['name'][0][0])
-            self.age_min = 14
-            self.age_max = 62
         else:
             print('No dataset named %s found!'% name)
         # val data
