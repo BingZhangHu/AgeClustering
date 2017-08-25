@@ -93,7 +93,7 @@ class AgeClusterMachine():
             for file_path in tf.unstack(file_paths):
                 file_content = tf.read_file(file_path)
                 try:
-                    image = tf.image.decode_png(file_content)
+                    image = tf.image.decode_jpeg(file_content)
                 except:
                     image = tf.image.decode_jpeg(file_content)
                 image = tf.image.resize_image_with_crop_or_pad(image, self.image_width, self.image_height)
