@@ -27,7 +27,7 @@ import os
 
 
 class FileReader():
-    def __init__(self, data_dir, data_info, contain_val=False, val_data_dir='', val_list='', reproducible=True):
+    def __init__(self, name,data_dir, data_info, contain_val=False, val_data_dir='', val_list='', reproducible=True):
 
         if reproducible:
             np.random.seed(112358)
@@ -35,11 +35,20 @@ class FileReader():
         # training data
         self.data_info = sio.loadmat(data_info)
         self.prefix = data_dir
-        self.age = np.squeeze(self.data_info['celebrityImageData']['age'][0][0])
-        self.total_images = len(self.age)
-        self.identity = np.squeeze(self.data_info['celebrityImageData']['identity'][0][0])
-        self.nof_identity = len(np.unique(self.identity))
-        self.path = np.squeeze(self.data_info['celebrityImageData']['name'][0][0]).tolist()
+        if name=='CACD':
+            self.age = np.squeeze(self.data_info['celebrityImageData']['age'][0][0])
+            self.total_images = len(self.age)
+            self.identity = np.squeeze(self.data_info['celebrityImageData']['identity'][0][0])
+            self.nof_identity = len(np.unique(self.identity))
+            self.path = np.squeeze(self.data_info['celebrityImageData']['name'][0][0]).tolist()
+        elif name=='MORPH' :
+            self.age = np.squeeze(self.data_info['morph']['age'][0][0])
+            self.total_images = len(self.age)
+            self.path = np.squeeze(self.data_info['morph']['name'][0][0])
+            self.age_min = 14
+            self.age_max = 62
+        else:
+            print('No dataset named %s found!'% name)
         # val data
         if contain_val:
             self.val_data_dir = val_data_dir
@@ -84,16 +93,16 @@ class FileReader():
                 images_selected = images_indices
             for image in images_selected:
                 try:
-                    paths.append(os.path.join(self.prefix, self.path[image][0].encode('utf-8').replace('jpg','png')))
+                    paths.append(os.path.join(self.prefix, self.path[image][0].encode('utf-8')))
                 except:
-                    paths.append(os.path.join(self.prefix, self.path[image][0].replace('jpg','png')))
+                    paths.append(os.path.join(self.prefix, self.path[image][0]))
                 labels.append(i)
         return np.asarray(paths), np.asarray(labels)
 
     def select_age_path(self,nof_age,nof_images):
         paths = []
         labels = []
-        ages_selected = random.sample(range(14,63), nof_age)
+        ages_selected = random.sample(range(np.min(self.age),np.max(self.age)+1), nof_age)
         for i in ages_selected:
             images_indices = np.where(self.age == i)[0]
             if len(images_indices) >= nof_images:
@@ -102,11 +111,11 @@ class FileReader():
                 images_selected = images_indices
             for image in images_selected:
                 try:
-                    paths.append(os.path.join(self.prefix, self.path[image][0].encode('utf-8').replace('jpg','png')))
-                    # paths.append(os.path.join(self.prefix, self.path[image][0].encode('utf-8')))
+                    # paths.append(os.path.join(self.prefix, self.path[image][0].encode('utf-8').replace('jpg','png')))
+                    paths.append(os.path.join(self.prefix, self.path[image][0].encode('utf-8')))
                 except:
-                    paths.append(os.path.join(self.prefix, self.path[image][0].replace('jpg','png')))
-                    # paths.append(os.path.join(self.prefix, self.path[image][0]))
+                    # paths.append(os.path.join(self.prefix, self.path[image][0].replace('jpg','png')))
+                    paths.append(os.path.join(self.prefix, self.path[image][0]))
                 labels.append(i)
         return np.asarray(paths), np.asarray(labels)
 

@@ -33,17 +33,19 @@ class ENVPATH():
         self.log_dir = os.path.join(self.log_base, subdir)
         self.model_dir = os.path.join(self.log_base, 'model.ckpt')
         if workplace == 'lab':
-            self.data_dir = '/home/bingzhang/Documents/Dataset/CACD/CACD2000'
-            self.data_info = '/home/bingzhang/Documents/Dataset/CACD/celenew2.mat'
+            # self.data_dir = '/home/bingzhang/Documents/Dataset/CACD/CACD2000'
+            self.data_dir = '/home/bingzhang/Documents/Dataset/MORPH/MORPH'
+            self.data_info = './data/MORPH.mat'
             self.model = '/home/bingzhang/Workspace/PycharmProjects/20170512-110547/model-20170512-110547.ckpt-250000'
             self.val_dir = '/home/bingzhang/Documents/Dataset/lfw'
-            self.val_list = './data/val_list2.txt'
+            self.val_list = './data/morph_val.txt'
         elif workplace == 'server':
-            self.data_dir = '/scratch/BingZhang/dataset/CACD2000_Cropped'
-            self.data_info = '/scratch/BingZhang/dataset/CACD2000/celenew2.mat'
+            # self.data_dir = '/scratch/BingZhang/dataset/CACD2000_Cropped'
+            self.data_dir = '/scratch/BingZhang/dataset/MORPH'
+            self.data_info = './data/MORPH.mat'
             self.model = '/scratch/BingZhang/facenet4drfr/model/20170512-110547/model-20170512-110547.ckpt-250000'
-            self.val_dir = '/scratch/BingZhang/lfw_250/'
-            self.val_list = './data/val_list.txt'
+            self.val_dir = '/scratch/BingZhang/dataset/MORPH'
+            self.val_list = './data/morph_val.txt'
         elif workplace == 'sweet_home':
             self.data_dir = '/Users/bingzhang/Documents/Dataset/CACD2000/'
             self.model = '/Users/bingzhang/Documents/Dataset/model/20170529-141612-52288'

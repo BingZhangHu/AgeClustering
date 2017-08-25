@@ -96,6 +96,7 @@ class AgeClusterMachine():
                     image = tf.image.decode_png(file_content)
                 except:
                     image = tf.image.decode_jpeg(file_content)
+                image = tf.image.resize_image_with_crop_or_pad(image,self.image_width, self.image_height)
                 image.set_shape((self.image_width, self.image_height, self.image_channel))
                 images.append(tf.image.per_image_standardization(image))
             images_and_labels.append([images, labels])
@@ -209,9 +210,9 @@ class AgeClusterMachine():
         summary_writer = tf.summary.FileWriter(self.path.log_dir, sess.graph)
         copyfile('./data/face.png', os.path.join(self.path.log_dir, 'face.png'))
         copyfile('./data/label.tsv', os.path.join(self.path.log_dir, 'label.tsv'))
-        cacd = FileReader(self.path.data_dir, self.path.data_info, reproducible=True, contain_val=True,
-                          val_data_dir=self.path.val_dir,
-                          val_list=self.path.val_list)
+        dataset = FileReader(name='MORPH', data_dir=self.path.data_dir, data_info=self.path.data_info, reproducible=True, contain_val=True,
+                             val_data_dir=self.path.val_dir,
+                             val_list=self.path.val_list)
         # add an embedding to tensorboard
         config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
         embedding_config = config.embeddings.add()
@@ -232,9 +233,9 @@ class AgeClusterMachine():
         for triplet_selection in range(self.max_epoch):
 
             if triplet_selection % 5 == 0 or saved_time < 5:
-                val_paths = cacd.get_val(cacd.val_size)
+                val_paths = dataset.get_val(dataset.val_size)
                 val_path_array = np.reshape(val_paths, (-1, 3))
-                val_label_array = np.reshape(np.arange(cacd.val_size), (-1, 3))
+                val_label_array = np.reshape(np.arange(dataset.val_size), (-1, 3))
 
                 # FIFO enqueue
                 sess.run(self.enqueue_op,
@@ -243,16 +244,16 @@ class AgeClusterMachine():
 
                 # forward propagation to get val embeddings
                 print('Forward propagation on validation set')
-                nof_batches = int(np.ceil(cacd.val_size / self.batch_size))
+                nof_batches = int(np.ceil(dataset.val_size / self.batch_size))
                 for i in range(nof_batches):
-                    batch_size = min(cacd.val_size - i * self.batch_size, self.batch_size)
+                    batch_size = min(dataset.val_size - i * self.batch_size, self.batch_size)
                     emb, label = sess.run([self.embeddings, self.label_batch],
                                           feed_dict={self.batch_size_placeholder: batch_size})
                     self.val_embeddings_array[label, :] = emb
                 print self.val_embeddings_array
 
             # select examples to forward propagation
-            paths, labels = cacd.select_age_path(self.nof_sampled_age, self.nof_images_per_age)
+            paths, labels = dataset.select_age_path(self.nof_sampled_age, self.nof_images_per_age)
             nof_examples = len(paths)
             path_array = np.reshape(paths, (-1, 3))
             index_array = np.reshape(np.arange(nof_examples), (-1, 3))
