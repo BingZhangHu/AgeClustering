@@ -37,7 +37,7 @@ class ENVPATH():
             self.data_dir = '/home/bingzhang/Documents/Dataset/MORPH/MORPH'
             self.data_info = './data/MORPH.mat'
             self.model = '/home/bingzhang/Workspace/PycharmProjects/20170512-110547/model-20170512-110547.ckpt-250000'
-            self.val_dir = '/home/bingzhang/Documents/Dataset/lfw'
+            self.val_dir = '/home/bingzhang/Documents/Dataset/MORPH/MORPH'
             self.val_list = './data/morph_val.txt'
         elif workplace == 'server':
             # self.data_dir = '/scratch/BingZhang/dataset/CACD2000_Cropped'
