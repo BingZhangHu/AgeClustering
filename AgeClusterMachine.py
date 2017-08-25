@@ -162,7 +162,7 @@ class AgeClusterMachine():
             tf.summary.scalar('loss_2',loss_2)
             tf.summary.scalar('loss_3',loss_3)
 
-        return loss_1 + loss_2 +0.1*loss_3, tf.reduce_mean(deltas_,0)
+        return loss_1 + loss_2 +0.0618*loss_3, tf.reduce_mean(deltas_,0)
 
     # def get_triplet_loss_v2(self,embeddings, deltas):
 
@@ -208,11 +208,12 @@ class AgeClusterMachine():
         coord = tf.train.Coordinator()
         tf.train.start_queue_runners(coord=coord, sess=sess)
         summary_writer = tf.summary.FileWriter(self.path.log_dir, sess.graph)
-        copyfile('./data/face.png', os.path.join(self.path.log_dir, 'face.png'))
-        copyfile('./data/label.tsv', os.path.join(self.path.log_dir, 'label.tsv'))
         dataset = FileReader(name='MORPH', data_dir=self.path.data_dir, data_info=self.path.data_info, reproducible=True, contain_val=True,
                              val_data_dir=self.path.val_dir,
                              val_list=self.path.val_list)
+        copyfile(dataset.label_tsv, os.path.join(self.path.log_dir, 'face.png'))
+        copyfile(dataset.sprite, os.path.join(self.path.log_dir, 'label.tsv'))
+
         # add an embedding to tensorboard
         config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
         embedding_config = config.embeddings.add()

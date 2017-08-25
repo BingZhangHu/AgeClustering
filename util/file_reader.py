@@ -41,10 +41,14 @@ class FileReader():
             self.identity = np.squeeze(self.data_info['celebrityImageData']['identity'][0][0])
             self.nof_identity = len(np.unique(self.identity))
             self.path = np.squeeze(self.data_info['celebrityImageData']['name'][0][0]).tolist()
+            self.label_tsv = './data/label.tsv'
+            self.sprite = './data/face.png'
         elif name=='MORPH' :
             self.age = np.squeeze(self.data_info['morph']['age'][0][0])
             self.total_images = len(self.age)
             self.path = np.squeeze(self.data_info['morph']['name'][0][0])
+            self.label_tsv = './data/m_label.tsv'
+            self.sprite = './data/m_sprite.png'
         else:
             print('No dataset named %s found!'% name)
         # val data
