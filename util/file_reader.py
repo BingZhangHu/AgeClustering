@@ -48,7 +48,7 @@ class FileReader():
             self.total_images = len(self.age)
             self.path = np.squeeze(self.data_info['morph']['name'][0][0])
             self.label_tsv = './data/m_label.tsv'
-            self.sprite = './data/m_sprite.png'
+            self.sprite = './data/test.png'
         else:
             print('No dataset named %s found!'% name)
         # val data
