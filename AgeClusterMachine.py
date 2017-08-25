@@ -237,7 +237,7 @@ class AgeClusterMachine():
                 val_paths = dataset.get_val()
                 val_path_array = np.reshape(val_paths, (-1, 3))
                 val_label_array = np.reshape(np.arange(dataset.val_size), (-1, 3))
-                print val_label_array
+                print val_path_array
                 print val_label_array
                 # FIFO enqueue
                 sess.run(self.enqueue_op,
