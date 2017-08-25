@@ -211,6 +211,7 @@ class AgeClusterMachine():
         dataset = FileReader(name='MORPH', data_dir=self.path.data_dir, data_info=self.path.data_info, reproducible=True, contain_val=True,
                              val_data_dir=self.path.val_dir,
                              val_list=self.path.val_list)
+        print(dataset)
         copyfile(dataset.label_tsv, os.path.join(self.path.log_dir, 'face.png'))
         copyfile(dataset.sprite, os.path.join(self.path.log_dir, 'label.tsv'))
 

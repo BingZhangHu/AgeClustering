@@ -61,6 +61,8 @@ class FileReader():
             for i in val_file.readlines():
                 self.val_path.append(os.path.join(self.val_data_dir, i.replace('\n', '')))
                 self.val_size += 1
+    def __str__(self):
+        return str(self.val_path)
 
     # def __str__(self):
     #     return 'Data directory:\t' + self.prefix + '\nIdentity Num:\t' + str(self.nof_identity)
