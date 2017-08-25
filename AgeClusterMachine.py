@@ -55,7 +55,7 @@ class AgeClusterMachine():
         # net parameters
         self.step = 0
         self.learning_rate = 0.0001
-        self.batch_size = 9
+        self.batch_size = 30
         self.embedding_bits = 128
         self.max_epoch = 10000
 
@@ -234,7 +234,7 @@ class AgeClusterMachine():
         for triplet_selection in range(self.max_epoch):
 
             if triplet_selection % 5 == 0 or saved_time < 5:
-                val_paths = dataset.get_val(dataset.val_size)
+                val_paths = dataset.get_val()
                 val_path_array = np.reshape(val_paths, (-1, 3))
                 val_label_array = np.reshape(np.arange(dataset.val_size), (-1, 3))
                 print val_label_array

@@ -173,8 +173,8 @@ class FileReader():
     #             self.current_index+=1
     #     return img_data,label
 
-    def get_val(self, n):
-        return self.val_path[0:n]
+    def get_val(self):
+        return self.val_path
 
         # def read_jpeg_image(self, path):
         #     content = ndimage.imread(path)
