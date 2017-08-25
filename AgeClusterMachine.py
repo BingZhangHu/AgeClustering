@@ -45,7 +45,7 @@ class AgeClusterMachine():
         self.path = env_path
 
         # validation data
-        self.val_size = 144
+        self.val_size = 120
 
         # image size
         self.image_height = 250
