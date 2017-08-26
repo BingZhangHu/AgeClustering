@@ -163,7 +163,7 @@ class AgeClusterMachine():
             tf.summary.scalar('loss_2', loss_2)
             tf.summary.scalar('loss_3', loss_3)
 
-        return loss_1 + loss_2 + 0.0618 * loss_3, tf.reduce_mean(deltas_, 0)
+        return loss_1 + loss_2 + 0.00618 * loss_3, tf.reduce_mean(deltas_, 0)
 
     # def get_triplet_loss_v2(self,embeddings, deltas):
 

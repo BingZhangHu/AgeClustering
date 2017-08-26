@@ -31,7 +31,7 @@ class FileReader():
 
         if reproducible:
             np.random.seed(112358)
-
+            random.seed(112358)
         # training data
         self.data_info = sio.loadmat(data_info)
         self.prefix = data_dir
