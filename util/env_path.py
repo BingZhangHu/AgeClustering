@@ -27,8 +27,9 @@ import os
 class ENVPATH():
     def __init__(self, workplace):
         """Inits SampleClass with blah."""
-        cwd = os.getcwd()
-        self.log_base = os.path.join(cwd, './log2')
+        # cwd = os.getcwd()
+        # self.log_base = os.path.join(cwd, './log2')
+        self.log_base = '/scratch/BingZhang/CVPR18/logs/'
         subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
         self.log_dir = os.path.join(self.log_base, subdir)
         self.model_dir = os.path.join(self.log_base, 'model.ckpt')
