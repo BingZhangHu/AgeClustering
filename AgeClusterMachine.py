@@ -163,7 +163,7 @@ class AgeClusterMachine():
             tf.summary.scalar('loss_2', loss_2)
             tf.summary.scalar('loss_3', loss_3)
 
-        return loss_1 + loss_2 + 0.00618 * loss_3, tf.reduce_mean(deltas_, 0)
+        return loss_1 + loss_2 , tf.reduce_mean(deltas_, 0)
 
     # def get_triplet_loss_v2(self,embeddings, deltas):
 
@@ -226,10 +226,11 @@ class AgeClusterMachine():
         embedding_config.sprite.single_image_dim.extend([64, 64])
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer, config)
 
-        var = tf.trainable_variables()
-        var = [v for v in var if str(v.name).__contains__('Inception')]
-        saver = tf.train.Saver(var)
-        saver.restore(sess, self.path.model)
+        # var = tf.trainable_variables()
+        # var = [v for v in var if str(v.name).__contains__('Inception')]
+        # saver = tf.train.Saver(var)
+        # saver.restore(sess, self.path.model)
+        saver = tf.train.Saver()
         emb_saver = tf.train.Saver([self.val_embeddings])
         saved_time = 0
 
@@ -252,7 +253,7 @@ class AgeClusterMachine():
                     emb, label = sess.run([self.embeddings, self.label_batch],
                                           feed_dict={self.batch_size_placeholder: batch_size})
                     self.val_embeddings_array[label, :] = emb
-                print self.val_embeddings_array
+                print(self.val_embeddings_array)
 
             # select examples to forward propagation
             paths, labels = dataset.select_age_path(self.nof_sampled_age, self.nof_images_per_age)
